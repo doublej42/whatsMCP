@@ -1,0 +1,32 @@
+namespace WhatsBuildingMcp.Models;
+
+/// <summary>Merged CSV + FolderView detail returned by <c>get_application</c>.</summary>
+public sealed record ApplicationDetail(
+    string FileNumber,
+    bool Found,
+    string Url,
+    string CivicAddress,
+    string Neighbourhood,
+    string ApplicationType,
+    string? TypeCategory,
+    string Status,
+    string? Description,
+    DateTime? DateSubmitted,
+    DateTime? IssuedDate,
+    DateTime? FinalDate,
+    DateTime? ExpiryDate,
+    decimal? PermitValue,
+    double? BuildingArea,
+    string? StaffContact,
+    IReadOnlyList<Applicant> Applicants,
+    IReadOnlyList<string> Properties,
+    IReadOnlyList<DetailProperty> PropertyDetails,
+    IReadOnlyList<DetailAttachment> Attachments,
+    IReadOnlyList<DetailNotice> Notices,
+    string? EducationalNote,
+    IReadOnlyList<ProcessStep> ProcessSteps,
+    IReadOnlyList<RelatedPolicy> Policies,
+    double? Latitude,
+    double? Longitude,
+    long SnapshotAgeSeconds,
+    string? Warning = null);

@@ -1,0 +1,47 @@
+services:
+  whatsbuilding-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: whatsbuilding-mcp:1.0.0
+    container_name: whatsbuilding-mcp
+    restart: unless-stopped
+    ports:
+      - "${MCP_PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      WhatsBuilding__BaseUrl: ${WHATSBUILDING_BASE_URL:-https://www.nanaimo.ca/whatsbuilding/}
+      WhatsBuilding__CacheMinutes: ${WHATSBUILDING_CACHE_MINUTES:-30}
+      WhatsBuilding__HttpTimeoutSeconds: ${WHATSBUILDING_HTTP_TIMEOUT_SECONDS:-60}
+      WhatsBuilding__UserAgent: ${WHATSBUILDING_USER_AGENT:-WhatsBuildingMcp/1.0 (+https://www.nanaimo.ca/whatsbuilding/)}
+      WhatsBuilding__DetailCacheMinutes: ${WHATSBUILDING_DETAIL_CACHE_MINUTES:-15}
+      Mcp__ApiKey: ${MCP_API_KEY:-}
+      RateLimit__PermitLimit: ${RATELIMIT_PERMIT_LIMIT:-60}
+      RateLimit__WindowSeconds: ${RATELIMIT_WINDOW_SECONDS:-60}
+      RateLimit__QueueLimit: ${RATELIMIT_QUEUE_LIMIT:-10}
+      Mcp__AllowedOrigins__0: ${MCP_ALLOWED_ORIGIN_0:-}
+      Mcp__AllowedOrigins__1: ${MCP_ALLOWED_ORIGIN_1:-}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

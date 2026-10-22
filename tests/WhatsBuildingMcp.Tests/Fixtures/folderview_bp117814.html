@@ -1,0 +1,216 @@
+
+    <input type="hidden" id="hdnLat" value="49.2337836" />
+    <input type="hidden" id="hdnLng" value="-124.0603847" />
+        <p>Interested in this application? <a href="/whatsbuilding/Login" class="btn btn-default"><span class="glyphicon glyphicon-user" aria-hidden="true"></span> Login to manage subscriptions</a> to subscribe to updates!</p>
+        <button type="button" onclick="ShowPermUrl()" class="app-btn">Permanent link</button>
+        <div id="PermLink">
+            <button style="float: right;" type="button" onclick="$('#PermLink').slideUp()" class="app-btn">Close</button>
+            <p>Copy and paste the link below into your email:</p>
+
+
+            <input id="txtEmailLink" style="width: 100%" type="text" value="https://www.nanaimo.ca/whatsbuilding/Folder/BP117814"/>
+                <a href="https://www.nanaimo.ca/whatsbuilding/Folder/BP117814" target="_blank" style="text-decoration: none">Click here to open this link in a new window</a>
+        </div>
+        <table class="standard-table">
+            <tr>
+                <th colspan="2">
+                    <span id="spanFileNumber">BP117814</span>  -  6671 Aulds Road
+                </th>
+            </tr>
+            <tr>
+                <td width="150">
+                    Neighbourhood:
+                </td>
+                <td>
+                    Pleasant Valley &nbsp;&nbsp;&nbsp;
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    Street Address:
+                </td>
+                <td>
+                    6671 Aulds Road
+                </td>
+            </tr>
+
+
+
+            <tr>
+                <td>
+                    Type of Application:
+                </td>
+                <td>
+                    Service Permit
+                </td>
+            </tr>
+            <tr>
+                <td width="150">
+                    File Number:
+                </td>
+                <td>
+                    BP117814
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    Date Application Submitted:
+                </td>
+                <td>
+                    September 18, 2012
+                </td>
+            </tr>
+
+        <tr>
+            <td>
+                Application Description:
+            </td>
+            <td>
+
+                Connect to sanitary sewer<br />
+            </td>
+        </tr>
+            <tr>
+                <td>
+                    Application Status:
+                </td>
+                <td>
+                    ACTIVE
+                </td>
+            </tr>
+
+
+
+            
+
+            
+
+
+
+        <tr>
+            <td>
+                Issued Date:
+            </td>
+            <td>
+                February 23, 2022
+            </td>
+        </tr>
+
+
+
+        <tr>
+            <td>
+                Expiry Date:
+            </td>
+            <td>
+                February 23, 2024
+            </td>
+        </tr>
+        </table>
+            <h3>Associated Properties</h3>
+                <table class="standard-table">
+                    <tr>
+                        <th>Address</th>
+                        <th>Zone</th>
+                        <th>More</th>
+                    </tr>
+                        <tr>
+                            <td>
+                            6671 AULDS ROAD
+                        </td>
+                        <td>
+
+                                     <a style='text-decoration: none' target='_blank' href='/ByLaws/ViewBylaw/4500.pdf#nameddest=Residential'>R1</a>
+
+                        </td>
+                        <td>
+
+                            <a style='text-decoration: none' target='_blank' href="https://www.nanaimo.ca/property-report?address=6671 AULDS ROAD">Property Report</a>
+
+                        </td>
+                    </tr>
+                </table>
+        <h3>Process Steps</h3>
+        <table class="standard-table">
+            
+                    <tr>
+                        <th><b>Task</b></th>
+                        <th><b>Status</b></th>
+                    </tr>
+
+    <tr>
+                            <td>
+                                SANITARY SEWER
+                                    <p style="padding-top:4px; line-height: 120%">Pipe and connection must be visible for inspection.</p>
+                        
+                            </td>
+                            <td style='font-size: smaller;padding-left: 5px; border-style: none; width: 90px'>
+                                PARTIAL
+
+                            </td>
+                        </tr>
+    <tr>
+                            <td>
+                                SANITARY SEWER
+                                    <p style="padding-top:4px; line-height: 120%">Pipe and connection must be visible for inspection.</p>
+                        
+                            </td>
+                            <td style='font-size: smaller;padding-left: 5px; border-style: none; width: 90px'>
+                                FAILED
+
+                            </td>
+                        </tr>
+
+        </table>
+            <table class="standard-table">
+
+                <tr>
+                    <th>Map</th>
+                </tr>
+                <tr>
+                    <td>
+                        <div id="iframediv" style="height:303px">
+                        </div>
+                        
+                        <a href="/whatsbuilding/BP117814.KML" title="Opens in Google Earth" style="text-decoration:none;"><img src="/whatsbuilding/Content/images/map/kml.gif" /> View in Google Earth (KML)</a>
+                    </td>
+                </tr>
+
+            </table>
+            <script type="text/javascript">
+
+                var lat = 49.2337836;
+                var lng = -124.0603847;
+                var myLatLng = new google.maps.LatLng(lat, lng);
+
+
+                var FolderOptions = {
+                    zoom: 17,
+                    center: myLatLng,
+                    disableDefaultUI: true,
+                    navigationControl: true,
+                    navigationControlOptions: { style: google.maps.NavigationControlStyle.SMALL },
+                    mapTypeId: google.maps.MapTypeId.HYBRID
+                };
+
+                var FolderMap = new google.maps.Map(document.getElementById('iframediv'), FolderOptions);
+
+                var Foldermarker = new google.maps.Marker({
+                    position: myLatLng,
+                    //title: myTitle,
+                    map: FolderMap,
+                    icon: "https://maps.google.com/intl/en_us/mapfiles/ms/micons/orange-dot.png"
+                });
+            </script>
+        <p style="line-height: 150%; font-size: smaller">
+            <br />
+            <span><b>Disclaimer:</b></span>
+            <br /><br />
+            The City of Nanaimo does not endorse any information contained herein by parties not affiliated with the City of Nanaimo.
+            Furthermore, the City of Nanaimo is providing the information contained within this website without warranty, guarantee, or further obligation.
+            The City is not liable for any consequences or damages any individual may incur as a result of misrepresented, misquoted, or mistaken information.
+            <br /><br />
+            The Information Provided within this website is for Informational Purposes Only.
+            It is not meant to be an authoritative guide, and will not in any circumstances override any decisions or standards made or set by any representative or agent of the City of Nanaimo.
+            <br />
+        </p>
