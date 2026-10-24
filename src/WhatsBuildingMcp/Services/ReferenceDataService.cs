@@ -11,8 +11,10 @@ public interface IReferenceDataService
 }
 
 /// <summary>
-/// Scrapes the home-page search form once and caches it. Falls back to
-/// snapshot-derived names plus the built-in category map when scraping fails.
+/// Scrapes the home-page search form once and caches it. Returns empty (non-live)
+/// data when scraping fails; callers fall back to snapshot-derived names plus the
+/// built-in category map. Deliberately snapshot-free so <see cref="ISnapshotService"/>
+/// can depend on it for the all-folders form POST without a dependency cycle.
 /// </summary>
 public sealed class ReferenceDataService : IReferenceDataService, IDisposable
 {
@@ -20,7 +22,6 @@ public sealed class ReferenceDataService : IReferenceDataService, IDisposable
 
     private readonly IMemoryCache _cache;
     private readonly WhatsBuildingClient _client;
-    private readonly ISnapshotService _snapshots;
     private readonly WhatsBuildingOptions _options;
     private readonly ILogger<ReferenceDataService> _logger;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
@@ -29,18 +30,15 @@ public sealed class ReferenceDataService : IReferenceDataService, IDisposable
     public ReferenceDataService(
         IMemoryCache cache,
         WhatsBuildingClient client,
-        ISnapshotService snapshots,
         IOptions<WhatsBuildingOptions> options,
         ILogger<ReferenceDataService> logger)
     {
         ArgumentNullException.ThrowIfNull(cache);
         ArgumentNullException.ThrowIfNull(client);
-        ArgumentNullException.ThrowIfNull(snapshots);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
         _cache = cache;
         _client = client;
-        _snapshots = snapshots;
         _options = options.Value;
         _logger = logger;
     }
@@ -94,30 +92,15 @@ public sealed class ReferenceDataService : IReferenceDataService, IDisposable
                 return parsed;
             }
 
-            _logger.LogWarning("Scraped reference data was empty; using the snapshot-derived fallback");
+            _logger.LogWarning("Scraped reference data was empty; returning non-live data");
         }
-#pragma warning disable CA1031 // Reference-data load must degrade to the fallback, never throw.
+#pragma warning disable CA1031 // Reference-data load must degrade to non-live data, never throw.
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning(ex, "Reference-data scrape failed; using the snapshot-derived fallback");
+            _logger.LogWarning(ex, "Reference-data scrape failed; returning non-live data");
         }
 #pragma warning restore CA1031
 
-        var snapshot = await _snapshots.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        var types = snapshot.Records
-            .Select(r => r.ApplicationType)
-            .Where(t => t.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
-            .Select(t => new ReferenceType(0, t, ReferenceDataFallback.CategoryForName(t) ?? 0))
-            .ToArray();
-        var areas = snapshot.Records
-            .Select(r => r.Neighbourhood)
-            .Where(n => n.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-            .Select(n => new ReferenceArea(0, n))
-            .ToArray();
-        return new ReferenceData(types, areas, [], false, DateTimeOffset.UtcNow);
+        return new ReferenceData([], [], [], false, DateTimeOffset.UtcNow);
     }
 }

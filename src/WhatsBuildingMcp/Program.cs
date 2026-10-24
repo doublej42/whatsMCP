@@ -130,7 +130,7 @@ app.UseMiddleware<ApiKeyMiddleware>();
 
 app.MapGet("/health", async (ISnapshotService snapshots, CancellationToken cancellationToken) =>
 {
-    var snapshot = await snapshots.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+    var snapshot = await snapshots.GetSnapshotAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
     var age = (long)Math.Max(0, (DateTimeOffset.UtcNow - snapshot.FetchedUtc).TotalSeconds);
     return Results.Json(
         new

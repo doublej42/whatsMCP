@@ -17,8 +17,8 @@ public sealed class WhatsBuildingOptions
     /// <summary>Descriptive User-Agent sent to the upstream site.</summary>
     public string UserAgent { get; set; } = "WhatsBuildingMcp/1.0 (+https://www.nanaimo.ca/whatsbuilding/)";
 
-    /// <summary>Maximum accepted size of the CSV snapshot download.</summary>
-    public long MaxCsvBytes { get; set; } = 25L * 1024 * 1024;
+    /// <summary>Maximum accepted size of the CSV snapshot download. Sized for the all-folders CSV (observed ~27 MB).</summary>
+    public long MaxCsvBytes { get; set; } = 64L * 1024 * 1024;
 
     /// <summary>Maximum accepted size of any other upstream response.</summary>
     public long MaxResponseBytes { get; set; } = 10L * 1024 * 1024;

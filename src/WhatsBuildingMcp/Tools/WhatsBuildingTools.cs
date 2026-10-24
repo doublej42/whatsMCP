@@ -20,8 +20,9 @@ public sealed class WhatsBuildingTools(
 
     [McpServerTool(Name = "search_applications", Title = "Search applications", ReadOnly = true, OpenWorld = true)]
     [Description("Searches City of Nanaimo What's Building development applications, building permits and subdivisions. "
-        + "Filters are case-insensitive. Data is City of Nanaimo public data; it may lag the city's systems, "
-        + "shows only active public applications by default, and is not legal advice.")]
+        + "Includes inactive and completed folders by default (ShowInactiveFolders=true); set includeInactive=false "
+        + "to search active folders only. Filters are case-insensitive. Data is City of Nanaimo public data; "
+        + "it may lag the city's systems and is not legal advice.")]
     public async Task<string> SearchApplicationsAsync(
         [Description("Keyword matched against address, description, applicants and properties.")] string? keyword = null,
         [Description("File-number substring, e.g. 'DP001'.")] string? fileNumber = null,
@@ -41,9 +42,11 @@ public sealed class WhatsBuildingTools(
         [Description("Sort descending.")] bool descending = false,
         [Description("Zero-based offset.")] int offset = 0,
         [Description("Results to return, 1-100 (default 25).")] int limit = ApplicationQuery.DefaultLimit,
+        [Description("Include inactive and completed folders (default true). Set to false only when the caller asks for active folders.")]
+        bool includeInactive = true,
         CancellationToken cancellationToken = default)
     {
-        var snapshot = await _snapshots.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var snapshot = await _snapshots.GetSnapshotAsync(includeInactive, cancellationToken).ConfigureAwait(false);
         var reference = await _referenceData.GetReferenceDataAsync(cancellationToken).ConfigureAwait(false);
 
         int? categoryId = null;
@@ -107,7 +110,8 @@ public sealed class WhatsBuildingTools(
     [McpServerTool(Name = "get_application", Title = "Get application detail", ReadOnly = true, OpenWorld = true)]
     [Description("Returns full detail for one application by file number (e.g. 'DP001002'), merging cached data "
         + "with the parsed public detail page: description, status dates, applicants, properties, attachments, "
-        + "notices and links. Data is City of Nanaimo public data; it may lag the city's systems and is not legal advice.")]
+        + "notices and links. Covers inactive and completed files as well. Data is City of Nanaimo public data; "
+        + "it may lag the city's systems and is not legal advice.")]
     public async Task<string> GetApplicationAsync(
         [Description("File number, e.g. 'DP001002'.")] string fileNumber,
         CancellationToken cancellationToken = default)
@@ -127,13 +131,16 @@ public sealed class WhatsBuildingTools(
     }
 
     [McpServerTool(Name = "find_applications_near", Title = "Find applications near a point", ReadOnly = true, OpenWorld = true)]
-    [Description("Finds active public applications within a radius of a latitude/longitude point, nearest first. "
+    [Description("Finds public applications within a radius of a latitude/longitude point, nearest first. "
+        + "Includes inactive and completed folders by default; set includeInactive=false for active folders only. "
         + "Data is City of Nanaimo public data; it may lag the city's systems and is not legal advice.")]
     public async Task<string> FindApplicationsNearAsync(
         [Description("Latitude in decimal degrees, e.g. 49.165.")] double latitude,
         [Description("Longitude in decimal degrees, e.g. -123.94.")] double longitude,
         [Description("Search radius in meters (1-50000).")] double radiusMeters = 1000,
         [Description("Results to return, 1-100 (default 25).")] int limit = ApplicationQuery.DefaultLimit,
+        [Description("Include inactive and completed folders (default true). Set to false only when the caller asks for active folders.")]
+        bool includeInactive = true,
         CancellationToken cancellationToken = default)
     {
         if (latitude is < -90 or > 90 || longitude is < -180 or > 180)
@@ -141,7 +148,7 @@ public sealed class WhatsBuildingTools(
             return McpJson.Serialize(new { total = 0, returned = 0, offset = 0, snapshotAgeSeconds = 0L, items = Array.Empty<object>(), warning = "Invalid coordinates." });
         }
 
-        var snapshot = await _snapshots.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var snapshot = await _snapshots.GetSnapshotAsync(includeInactive, cancellationToken).ConfigureAwait(false);
         var reference = await _referenceData.GetReferenceDataAsync(cancellationToken).ConfigureAwait(false);
         var radius = Math.Clamp(radiusMeters, 1, 50000);
 
@@ -173,15 +180,18 @@ public sealed class WhatsBuildingTools(
     }
 
     [McpServerTool(Name = "find_applications_by_address", Title = "Find applications by address", ReadOnly = true, OpenWorld = true)]
-    [Description("Finds active public applications by street name with an optional house number. "
+    [Description("Finds public applications by street name with an optional house number. "
+        + "Includes inactive and completed folders by default; set includeInactive=false for active folders only. "
         + "Data is City of Nanaimo public data; it may lag the city's systems and is not legal advice.")]
     public async Task<string> FindApplicationsByAddressAsync(
         [Description("Street name, e.g. 'Fry Street'.")] string street,
         [Description("House number, e.g. '155'.")] string? houseNumber = null,
         [Description("Results to return, 1-100 (default 25).")] int limit = ApplicationQuery.DefaultLimit,
+        [Description("Include inactive and completed folders (default true). Set to false only when the caller asks for active folders.")]
+        bool includeInactive = true,
         CancellationToken cancellationToken = default)
     {
-        var snapshot = await _snapshots.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var snapshot = await _snapshots.GetSnapshotAsync(includeInactive, cancellationToken).ConfigureAwait(false);
         var reference = await _referenceData.GetReferenceDataAsync(cancellationToken).ConfigureAwait(false);
 
         int? CategoryOf(string typeName)
@@ -210,11 +220,15 @@ public sealed class WhatsBuildingTools(
     }
 
     [McpServerTool(Name = "list_neighbourhoods", Title = "List neighbourhoods", ReadOnly = true, OpenWorld = true)]
-    [Description("Lists Nanaimo neighbourhoods with active public application counts. "
+    [Description("Lists Nanaimo neighbourhoods with application counts. Counts include inactive and completed folders "
+        + "by default; set includeInactive=false for active folders only. "
         + "Data is City of Nanaimo public data; it may lag the city's systems and is not legal advice.")]
-    public async Task<string> ListNeighbourhoodsAsync(CancellationToken cancellationToken = default)
+    public async Task<string> ListNeighbourhoodsAsync(
+        [Description("Include inactive and completed folders (default true). Set to false only when the caller asks for active folders.")]
+        bool includeInactive = true,
+        CancellationToken cancellationToken = default)
     {
-        var snapshot = await _snapshots.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var snapshot = await _snapshots.GetSnapshotAsync(includeInactive, cancellationToken).ConfigureAwait(false);
         var reference = await _referenceData.GetReferenceDataAsync(cancellationToken).ConfigureAwait(false);
 
         var counts = snapshot.Records
@@ -236,11 +250,15 @@ public sealed class WhatsBuildingTools(
     }
 
     [McpServerTool(Name = "list_application_types", Title = "List application types", ReadOnly = true, OpenWorld = true)]
-    [Description("Lists application types with their category and active public application counts. "
+    [Description("Lists application types with their category and application counts. Counts include inactive and completed folders "
+        + "by default; set includeInactive=false for active folders only. "
         + "Data is City of Nanaimo public data; it may lag the city's systems and is not legal advice.")]
-    public async Task<string> ListApplicationTypesAsync(CancellationToken cancellationToken = default)
+    public async Task<string> ListApplicationTypesAsync(
+        [Description("Include inactive and completed folders (default true). Set to false only when the caller asks for active folders.")]
+        bool includeInactive = true,
+        CancellationToken cancellationToken = default)
     {
-        var snapshot = await _snapshots.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var snapshot = await _snapshots.GetSnapshotAsync(includeInactive, cancellationToken).ConfigureAwait(false);
         var reference = await _referenceData.GetReferenceDataAsync(cancellationToken).ConfigureAwait(false);
 
         var counts = snapshot.Records
@@ -276,13 +294,15 @@ public sealed class WhatsBuildingTools(
 
     [McpServerTool(Name = "get_recent_activity", Title = "Get recent activity", ReadOnly = true, OpenWorld = true)]
     [Description("Returns applications applied for, issued or completed in the last N days, newest first. "
-        + "Combines cached snapshot dates with the upstream date-window search when available. "
-        + "Data is City of Nanaimo public data; it may lag the city's systems, "
-        + "shows only active public applications by default, and is not legal advice.")]
+        + "Combines cached snapshot dates with the upstream date-window search (inactive-inclusive) when available. "
+        + "With includeInactive=false, searches the active snapshot only and skips the upstream window. "
+        + "Data is City of Nanaimo public data; it may lag the city's systems and is not legal advice.")]
     public async Task<string> GetRecentActivityAsync(
         [Description("Look-back window in days, 1-90 (default 7).")] int days = 7,
         [Description("Activity kind: 'applied', 'issued' or 'completed'.")] string kind = "applied",
         [Description("Results to return, 1-100 (default 25).")] int limit = ApplicationQuery.DefaultLimit,
+        [Description("Include inactive and completed folders (default true). Set to false only when the caller asks for active folders.")]
+        bool includeInactive = true,
         CancellationToken cancellationToken = default)
     {
         var normalizedKind = (kind ?? "applied").Trim().ToLowerInvariant();
@@ -293,7 +313,7 @@ public sealed class WhatsBuildingTools(
 
         var windowDays = Math.Clamp(days, 1, 90);
         var today = DateUtil.NanaimoToday();
-        var snapshot = await _snapshots.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var snapshot = await _snapshots.GetSnapshotAsync(includeInactive, cancellationToken).ConfigureAwait(false);
 
         var snapshotItems = ApplicationQuery.RecentFromSnapshot(snapshot.Records, normalizedKind, today, windowDays);
         var newStatus = normalizedKind switch
@@ -302,7 +322,12 @@ public sealed class WhatsBuildingTools(
             "issued" => "Issued",
             _ => "Completed",
         };
-        var markers = await _content.GetRecentMarkersAsync(newStatus, today.AddDays(-windowDays), today, cancellationToken).ConfigureAwait(false);
+
+        // The upstream window always spans inactive folders (ShowInactiveFolders=true),
+        // so active-only requests skip it and rely on the active snapshot dates.
+        var markers = includeInactive
+            ? await _content.GetRecentMarkersAsync(newStatus, today.AddDays(-windowDays), today, cancellationToken).ConfigureAwait(false)
+            : new MarkersResult([], false);
         var merged = ApplicationQuery.MergeRecent(snapshotItems, markers.Markers, normalizedKind, limit);
 
         var result = new RecentActivityResult(
@@ -319,9 +344,9 @@ public sealed class WhatsBuildingTools(
     }
 
     [McpServerTool(Name = "get_statistics", Title = "Get statistics", ReadOnly = true, OpenWorld = true)]
-    [Description("Counts active public applications and totals permit value, grouped by neighbourhood, type or status. "
-        + "Data is City of Nanaimo public data; it may lag the city's systems, "
-        + "shows only active public applications by default, and is not legal advice.")]
+    [Description("Counts public applications and totals permit value, grouped by neighbourhood, type or status. "
+        + "Includes inactive and completed folders by default; set includeInactive=false for active folders only. "
+        + "Data is City of Nanaimo public data; it may lag the city's systems and is not legal advice.")]
     public async Task<string> GetStatisticsAsync(
         [Description("Group by: 'neighbourhood', 'type' or 'status'.")] string groupBy = "neighbourhood",
         [Description("Filter: neighbourhood name.")] string? neighbourhood = null,
@@ -330,6 +355,8 @@ public sealed class WhatsBuildingTools(
         [Description("Filter: status, e.g. 'ACTIVE'.")] string? status = null,
         [Description("Filter: submitted on/after (yyyy-MM-dd).")] string? submittedFrom = null,
         [Description("Filter: submitted on/before (yyyy-MM-dd).")] string? submittedTo = null,
+        [Description("Include inactive and completed folders (default true). Set to false only when the caller asks for active folders.")]
+        bool includeInactive = true,
         CancellationToken cancellationToken = default)
     {
         var normalized = (groupBy ?? "neighbourhood").Trim().ToLowerInvariant();
@@ -348,7 +375,7 @@ public sealed class WhatsBuildingTools(
             }
         }
 
-        var snapshot = await _snapshots.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var snapshot = await _snapshots.GetSnapshotAsync(includeInactive, cancellationToken).ConfigureAwait(false);
         var reference = await _referenceData.GetReferenceDataAsync(cancellationToken).ConfigureAwait(false);
 
         int? CategoryOf(string typeName)

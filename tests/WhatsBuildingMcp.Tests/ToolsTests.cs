@@ -19,29 +19,21 @@ public sealed class ToolsTests : IDisposable
         "RA000496","https://www.nanaimo.ca/whatsbuilding/folder/RA000496","6/15/2023 12:00:00 AM","3469 Uplands Drive","Rutherford","Rezoning Application","Caleb Horn","Rezone to R8.","ACTIVE","250000","","Agent:Jane Doe","","","","3469 UPLANDS DRIVE","True","False","49.2149025","-124.0015826"
         """;
 
+    private const string AllCsv = Csv + "\n"
+        + "\"BP000001\",\"https://www.nanaimo.ca/whatsbuilding/folder/BP000001\",\"1/5/2010 12:00:00 AM\",\"1 Old Street\",\"Downtown\",\"Single / Two Family Dwelling\",\"\",\"Demolished garage.\",\"COMPLETED\",\"\",\"\",\"\",\"\",\"\",\"\",\"1 OLD STREET\",\"False\",\"False\",\"49.16\",\"-123.94\"";
+
     private readonly MemoryCache _cache = new(new MemoryCacheOptions());
     private readonly FakeHandler _handler = new();
     private readonly WhatsBuildingTools _tools;
 
     public ToolsTests()
     {
-        var options = MOptions.Create(new WhatsBuildingOptions
-        {
-            BaseUrl = "https://upstream.test/whatsbuilding/",
-            CacheMinutes = 30,
-        });
-        var guard = new OutboundHostGuardHandler(options) { InnerHandler = _handler };
-        var http = new HttpClient(guard) { BaseAddress = new Uri("https://upstream.test/whatsbuilding/") };
-        var client = new WhatsBuildingClient(http, options, NullLogger<WhatsBuildingClient>.Instance);
-        var snapshots = new SnapshotService(client, options, NullLogger<SnapshotService>.Instance);
-        var reference = new ReferenceDataService(_cache, client, snapshots, options, NullLogger<ReferenceDataService>.Instance);
-        var details = new DetailService(_cache, client, snapshots, reference, options, NullLogger<DetailService>.Instance);
-        var content = new UpstreamContentService(_cache, client, reference, options, NullLogger<UpstreamContentService>.Instance);
-        _tools = new WhatsBuildingTools(snapshots, reference, details, content);
+        _tools = CreateTools(_handler, _cache);
 
         _handler.Responses["/whatsbuilding/whatsbuilding.csv"] = Csv;
         _handler.Responses["/whatsbuilding/FolderView/DP001002"] = Fixture("folderview_dp001002.html");
         _handler.Responses["/whatsbuilding/"] = Fixture("searchform_fragment.html");
+        _handler.PostResponses["/whatsbuilding/whatsbuilding.csv"] = AllCsv;
     }
 
     public void Dispose()
@@ -63,10 +55,88 @@ public sealed class ToolsTests : IDisposable
         Assert.Equal("Development Applications", root.GetProperty("items")[0].GetProperty("typeCategory").GetString());
         Assert.True(root.GetProperty("snapshotAgeSeconds").GetInt64() >= 0);
 
-        // Every tool call reuses the snapshot: the CSV was fetched exactly once.
-        Assert.Equal(2, _handler.Requests.Count); // CSV + search form
+        // Every tool call reuses the snapshots: active CSV + search form + all-folders CSV POST.
+        Assert.Equal(3, _handler.Requests.Count);
         await _tools.SearchApplicationsAsync(keyword: "mixed use");
-        Assert.Equal(2, _handler.Requests.Count);
+        Assert.Equal(3, _handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Search_Default_Includes_Inactive_Folders()
+    {
+        var json = await _tools.SearchApplicationsAsync();
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal(3, root.GetProperty("total").GetInt64());
+        var fileNumbers = root.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("fileNumber").GetString())
+            .ToArray();
+        Assert.Contains("BP000001", fileNumbers);
+        Assert.False(root.TryGetProperty("warning", out _));
+    }
+
+    [Fact]
+    public async Task Search_ActiveOnly_Excludes_Inactive_Folders()
+    {
+        var json = await _tools.SearchApplicationsAsync(includeInactive: false);
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal(2, root.GetProperty("total").GetInt64());
+        var fileNumbers = root.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("fileNumber").GetString())
+            .ToArray();
+        Assert.DoesNotContain("BP000001", fileNumbers);
+    }
+
+    [Fact]
+    public async Task AllFoldersCsv_Post_Begins_With_ShowInactiveFolders_True()
+    {
+        await _tools.SearchApplicationsAsync();
+
+        var post = Assert.Single(_handler.Requests, r => r.Method == HttpMethod.Post);
+        Assert.EndsWith("whatsbuilding.csv", post.RequestUri!.AbsolutePath, StringComparison.OrdinalIgnoreCase);
+        var body = Assert.Single(_handler.PostBodies);
+        Assert.StartsWith("SearchCriteria.ShowInactiveFolders=true", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Inactive_Unavailable_Falls_Back_To_Active_With_Warning()
+    {
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var handler = new FakeHandler();
+        handler.Responses["/whatsbuilding/whatsbuilding.csv"] = Csv;
+        handler.Responses["/whatsbuilding/"] = Fixture("searchform_fragment.html");
+        var tools = CreateTools(handler, cache); // no PostResponses: the all-folders POST 404s
+
+        var json = await tools.SearchApplicationsAsync();
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal(2, root.GetProperty("total").GetInt64());
+        Assert.Contains("active", root.GetProperty("warning").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RecentActivity_Default_Uses_Upstream_Window()
+    {
+        await _tools.GetRecentActivityAsync(days: 7, kind: "applied");
+
+        Assert.Contains(
+            _handler.Requests,
+            r => r.Method == HttpMethod.Post
+                && r.RequestUri!.AbsolutePath.EndsWith("GetMarkers", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task RecentActivity_ActiveOnly_Skips_Upstream_Window()
+    {
+        await _tools.GetRecentActivityAsync(days: 7, kind: "applied", includeInactive: false);
+
+        Assert.DoesNotContain(
+            _handler.Requests,
+            r => r.RequestUri!.AbsolutePath.EndsWith("GetMarkers", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -110,7 +180,7 @@ public sealed class ToolsTests : IDisposable
 
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        Assert.Equal(2, root.GetProperty("total").GetInt64());
+        Assert.Equal(3, root.GetProperty("total").GetInt64());
         Assert.Equal("RA000496", root.GetProperty("items")[0].GetProperty("application").GetProperty("fileNumber").GetString());
     }
 
@@ -131,21 +201,31 @@ public sealed class ToolsTests : IDisposable
     public async Task Failed_First_Load_Yields_Warning_Envelope()
     {
         _handler.Responses.Clear(); // every upstream call 404s
-        var options = MOptions.Create(new WhatsBuildingOptions { BaseUrl = "https://upstream.test/whatsbuilding/" });
-        var guard = new OutboundHostGuardHandler(options) { InnerHandler = _handler };
-        var http = new HttpClient(guard) { BaseAddress = new Uri("https://upstream.test/whatsbuilding/") };
-        var client = new WhatsBuildingClient(http, options, NullLogger<WhatsBuildingClient>.Instance);
-        var snapshots = new SnapshotService(client, options, NullLogger<SnapshotService>.Instance);
-        var reference = new ReferenceDataService(new MemoryCache(new MemoryCacheOptions()), client, snapshots, options, NullLogger<ReferenceDataService>.Instance);
-        var details = new DetailService(new MemoryCache(new MemoryCacheOptions()), client, snapshots, reference, options, NullLogger<DetailService>.Instance);
-        var content = new UpstreamContentService(new MemoryCache(new MemoryCacheOptions()), client, reference, options, NullLogger<UpstreamContentService>.Instance);
-        var tools = new WhatsBuildingTools(snapshots, reference, details, content);
+        _handler.PostResponses.Clear();
+        var tools = CreateTools(_handler, new MemoryCache(new MemoryCacheOptions()));
 
         var json = await tools.SearchApplicationsAsync();
 
         using var document = JsonDocument.Parse(json);
         Assert.Equal(0, document.RootElement.GetProperty("total").GetInt64());
         Assert.NotNull(document.RootElement.GetProperty("warning").GetString());
+    }
+
+    private static WhatsBuildingTools CreateTools(FakeHandler handler, MemoryCache cache)
+    {
+        var options = MOptions.Create(new WhatsBuildingOptions
+        {
+            BaseUrl = "https://upstream.test/whatsbuilding/",
+            CacheMinutes = 30,
+        });
+        var guard = new OutboundHostGuardHandler(options) { InnerHandler = handler };
+        var http = new HttpClient(guard) { BaseAddress = new Uri("https://upstream.test/whatsbuilding/") };
+        var client = new WhatsBuildingClient(http, options, NullLogger<WhatsBuildingClient>.Instance);
+        var reference = new ReferenceDataService(cache, client, options, NullLogger<ReferenceDataService>.Instance);
+        var snapshots = new SnapshotService(client, reference, options, NullLogger<SnapshotService>.Instance);
+        var details = new DetailService(cache, client, snapshots, reference, options, NullLogger<DetailService>.Instance);
+        var content = new UpstreamContentService(cache, client, reference, options, NullLogger<UpstreamContentService>.Instance);
+        return new WhatsBuildingTools(snapshots, reference, details, content);
     }
 
     private static string Fixture(string name)
@@ -155,17 +235,33 @@ public sealed class ToolsTests : IDisposable
     {
         public Dictionary<string, string> Responses { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+        public Dictionary<string, string> PostResponses { get; } = new(StringComparer.OrdinalIgnoreCase);
+
         public List<HttpRequestMessage> Requests { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        public List<string> PostBodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add(request);
-            if (request.RequestUri is not null && Responses.TryGetValue(request.RequestUri.AbsolutePath, out var body))
+            if (request.Method == HttpMethod.Post)
             {
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
+                // Read here: the client disposes the content after sending.
+                PostBodies.Add(request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+                if (request.RequestUri is not null && PostResponses.TryGetValue(request.RequestUri.AbsolutePath, out var postBody))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(postBody) };
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
             }
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            if (request.RequestUri is not null && Responses.TryGetValue(request.RequestUri.AbsolutePath, out var body))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
         }
     }
 }

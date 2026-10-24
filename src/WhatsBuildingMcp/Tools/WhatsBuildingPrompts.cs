@@ -23,8 +23,9 @@ public sealed class WhatsBuildingPrompts
             type (development applications, building permits, subdivision/other), include file numbers,
             addresses, statuses and key dates, and call out anything with active public notices.
 
-            Remember: this is City of Nanaimo public data; it may lag the city's systems, shows only
-            active public applications by default, and is not legal advice.
+            Remember: this is City of Nanaimo public data; it may lag the city's systems, includes
+            inactive and completed folders by default (set includeInactive=false for active folders only),
+            and is not legal advice.
             """;
     }
 }

@@ -98,7 +98,9 @@ public sealed class DetailService : IDetailService, IDisposable
 
     private async Task<ApplicationDetail?> LoadAsync(string fileNumber, CancellationToken cancellationToken)
     {
-        var snapshot = await _snapshots.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        // Point lookups always span inactive/completed files too; the active snapshot
+        // is only a fallback when the all-folders snapshot is unavailable.
+        var snapshot = await _snapshots.GetSnapshotAsync(includeInactive: true, cancellationToken).ConfigureAwait(false);
         var record = snapshot.Records.FirstOrDefault(r => r.FileNumber.Equals(fileNumber, StringComparison.OrdinalIgnoreCase));
 
         FolderViewDetail? page = null;

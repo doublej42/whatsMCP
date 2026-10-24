@@ -8,8 +8,9 @@ Public access only: the server talks to What's Building over its public HTTPS en
 anonymously. It never touches the database, uses no credentials, never calls any `Identity/*`
 route, and exposes nothing user-specific. All tools are read-only.
 
-> City of Nanaimo public data; may lag the city's systems; shows only active public
-> applications by default; not legal advice.
+> City of Nanaimo public data; may lag the city's systems; includes inactive and
+> completed folders by default (set includeInactive=false for active folders only);
+> not legal advice.
 
 ## Architecture
 
@@ -17,9 +18,13 @@ The upstream app is a legacy ASP.NET MVC 5 app, not a JSON API, so the server us
 **cache-and-filter-locally** design:
 
 - `SnapshotService` (`IHostedService` + `PeriodicTimer`, lazy load on first use) downloads
-  `whatsbuilding.csv` (the default active set) every `CacheMinutes` (default 30) and serves it
-  as an immutable in-memory snapshot. Failed refreshes keep serving the previous snapshot,
-  flagged stale with a warning; every tool result carries `snapshotAgeSeconds`.
+  `whatsbuilding.csv` twice every `CacheMinutes` (default 30): the default active set via
+  GET, and the all-folders set (active plus inactive/completed) via a search-form POST with
+  `SearchCriteria.ShowInactiveFolders=true`. It serves both as immutable in-memory snapshots.
+  Failed refreshes keep serving the previous snapshots, flagged stale with a warning; every
+  tool result carries `snapshotAgeSeconds`. Tools search the all-folders snapshot by default;
+  `includeInactive=false` restricts a call to active folders only. When the all-folders
+  snapshot is unavailable, calls fall back to the active snapshot with a warning.
 - Search, filter, sort and paging run in memory over the snapshot (case-insensitive contains,
   matching upstream semantics). Nearby search uses the haversine formula.
 - `DetailService` enriches `get_application` with the parsed `/FolderView/{fileNumber}` page
@@ -29,7 +34,8 @@ The upstream app is a legacy ASP.NET MVC 5 app, not a JSON API, so the server us
 - Advanced path (optional): `get_recent_activity` also POSTs the complete scraped form to
   `/GetMarkers` with `ShowInactiveFolders=true` and a status-change window, so inactive and
   completed applications in the window are included. If that path fails, the tool falls back
-  to snapshot dates with a clear warning.
+  to snapshot dates with a clear warning. With `includeInactive=false` the tool searches the
+  active snapshot only and skips the upstream window (which is inherently inactive-inclusive).
 
 Good-citizen behavior: typed `HttpClient` via `HttpClientFactory` with a descriptive
 `User-Agent`, Polly retry + timeout (`Microsoft.Extensions.Http.Resilience`), `IMemoryCache`
@@ -69,7 +75,7 @@ List tools return `{total, returned, offset, snapshotAgeSeconds, items[], warnin
 | `WhatsBuilding:HttpTimeoutSeconds` | `WhatsBuilding__HttpTimeoutSeconds` | `60` |
 | `WhatsBuilding:UserAgent` | `WhatsBuilding__UserAgent` | `WhatsBuildingMcp/1.0 (+https://www.nanaimo.ca/whatsbuilding/)` |
 | `WhatsBuilding:DetailCacheMinutes` | `WhatsBuilding__DetailCacheMinutes` | `15` |
-| `WhatsBuilding:MaxCsvBytes` | `WhatsBuilding__MaxCsvBytes` | `26214400` (25 MB) |
+| `WhatsBuilding:MaxCsvBytes` | `WhatsBuilding__MaxCsvBytes` | `67108864` (64 MB) |
 | `WhatsBuilding:MaxResponseBytes` | `WhatsBuilding__MaxResponseBytes` | `10485760` (10 MB) |
 | `WhatsBuilding:ReferenceDataCacheHours` | `WhatsBuilding__ReferenceDataCacheHours` | `24` |
 | `WhatsBuilding:RecentActivityCacheMinutes` | `WhatsBuilding__RecentActivityCacheMinutes` | `15` |
@@ -136,6 +142,11 @@ tests/WhatsBuildingMcp.Tests/  # xUnit: CSV, query, geo, HTML fixtures, tools, m
 ## Upstream notes (verified against the live site)
 
 - `whatsbuilding.csv` header ends with a trailing comma; dates look like `9/18/2012 12:00:00 AM`.
+- POSTing the complete search form to `whatsbuilding.csv` with
+  `SearchCriteria.ShowInactiveFolders=true` (prepended ahead of the hidden `false`, as for
+  `/GetMarkers`) returns the all-folders CSV. A GET query string such as
+  `?SearchCriteria.ShowInactiveFolders=true` is ignored upstream — verified byte-identical
+  to the default active set — so the form POST is required for inactive folders.
 - Unknown file numbers return HTTP 200 with `The application was not found.` on `/FolderView/`.
 - Notices live under an `Important Dates & Notices` heading; no per-application educational
   note was observed in Folder pages, so `educationalNote` is captured opportunistically

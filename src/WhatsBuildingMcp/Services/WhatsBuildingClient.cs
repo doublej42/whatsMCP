@@ -72,52 +72,96 @@ public sealed class WhatsBuildingClient
         => GetStringAsync(string.Empty, _options.MaxResponseBytes, cancellationToken);
 
     /// <summary>
-    /// Posts the complete scraped search form to <c>/GetMarkers</c> with a status-change
-    /// window applied, so inactive/completed applications in the window are included.
+    /// Posts the complete scraped search form to <c>/GetMarkers</c> with
+    /// <c>SearchCriteria.ShowInactiveFolders=true</c>. Pass a status-change window to
+    /// restrict the markers to it; omit the window for the unfiltered all-folders set.
     /// </summary>
-    public async Task<string> PostMarkersAsync(
+    public Task<string> PostMarkersAsync(
         IReadOnlyList<FormField> formDefaults,
-        string newStatus,
-        DateOnly windowStart,
-        DateOnly windowEnd,
-        CancellationToken cancellationToken)
+        string? newStatus = null,
+        DateOnly? windowStart = null,
+        DateOnly? windowEnd = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(formDefaults);
-        ArgumentException.ThrowIfNullOrWhiteSpace(newStatus);
 
-        var pairs = new List<KeyValuePair<string, string?>>(formDefaults.Count + 2);
+        var overrides = new List<KeyValuePair<string, string?>>(3);
+        if (!string.IsNullOrWhiteSpace(newStatus))
+        {
+            overrides.Add(new KeyValuePair<string, string?>("SearchCriteria.NewStatus", newStatus));
+        }
+
+        if (windowStart.HasValue)
+        {
+            overrides.Add(new KeyValuePair<string, string?>("SearchCriteria.StatusStartDate", windowStart.Value.ToString("yyyy-MM-dd", DateUtil.EnUs)));
+        }
+
+        if (windowEnd.HasValue)
+        {
+            overrides.Add(new KeyValuePair<string, string?>("SearchCriteria.StatusEndDate", windowEnd.Value.ToString("yyyy-MM-dd", DateUtil.EnUs)));
+        }
+
+        return PostSearchFormAsync(
+            "GetMarkers",
+            formDefaults,
+            overrides,
+            _options.MaxResponseBytes,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Posts the complete scraped search form to <c>whatsbuilding.csv</c> with
+    /// <c>SearchCriteria.ShowInactiveFolders=true</c>, returning the all-folders CSV
+    /// (active plus inactive/completed). A plain GET only ever returns the default
+    /// active set — the query string is ignored upstream — so the form POST is required.
+    /// </summary>
+    public Task<string> PostCsvAsync(IReadOnlyList<FormField> formDefaults, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(formDefaults);
+
+        return PostSearchFormAsync(
+            "whatsbuilding.csv",
+            formDefaults,
+            [],
+            _options.MaxCsvBytes,
+            cancellationToken);
+    }
+
+    private async Task<string> PostSearchFormAsync(
+        string relativePath,
+        IReadOnlyList<FormField> formDefaults,
+        IReadOnlyList<KeyValuePair<string, string?>> overrides,
+        long maxBytes,
+        CancellationToken cancellationToken)
+    {
+        var overridden = new HashSet<string>(overrides.Select(o => o.Key), StringComparer.Ordinal);
+        var pairs = new List<KeyValuePair<string, string?>>(formDefaults.Count + overrides.Count + 1);
         foreach (var field in formDefaults)
         {
             // Drop fields we override below; the rest ride along untouched.
-            if (field.Name.Equals("SearchCriteria.NewStatus", StringComparison.Ordinal)
-                || field.Name.Equals("SearchCriteria.StatusStartDate", StringComparison.Ordinal)
-                || field.Name.Equals("SearchCriteria.StatusEndDate", StringComparison.Ordinal))
+            if (!overridden.Contains(field.Name))
             {
-                continue;
+                pairs.Add(new KeyValuePair<string, string?>(field.Name, field.Value));
             }
-
-            pairs.Add(new KeyValuePair<string, string?>(field.Name, field.Value));
         }
 
-        pairs.Add(new KeyValuePair<string, string?>("SearchCriteria.NewStatus", newStatus));
-        pairs.Add(new KeyValuePair<string, string?>("SearchCriteria.StatusStartDate", windowStart.ToString("yyyy-MM-dd", DateUtil.EnUs)));
-        pairs.Add(new KeyValuePair<string, string?>("SearchCriteria.StatusEndDate", windowEnd.ToString("yyyy-MM-dd", DateUtil.EnUs)));
+        pairs.AddRange(overrides);
 
         // MVC check boxes post "true" then a hidden "false"; the binder takes the first
-        // value, so checking the box means prepending "true" ahead of the hidden "false".
+        // value, so including inactive folders means prepending "true" ahead of the hidden "false".
         pairs.Insert(0, new KeyValuePair<string, string?>("SearchCriteria.ShowInactiveFolders", "true"));
 
         using var content = new FormUrlEncodedContent(pairs);
-        using var request = new HttpRequestMessage(HttpMethod.Post, BuildUri("GetMarkers")) { Content = content };
+        using var request = new HttpRequestMessage(HttpMethod.Post, BuildUri(relativePath)) { Content = content };
         var stopwatch = Stopwatch.StartNew();
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new UpstreamException($"Upstream POST GetMarkers failed with {(int)response.StatusCode}.");
+            throw new UpstreamException($"Upstream POST {relativePath} failed with {(int)response.StatusCode}.");
         }
 
-        var body = await ReadCappedStringAsync(response, _options.MaxResponseBytes, cancellationToken).ConfigureAwait(false);
-        _logger.LogDebug("Upstream POST GetMarkers returned {Bytes} bytes in {ElapsedMs} ms", body.Length, stopwatch.ElapsedMilliseconds);
+        var body = await ReadCappedStringAsync(response, maxBytes, cancellationToken).ConfigureAwait(false);
+        _logger.LogDebug("Upstream POST {Path} returned {Bytes} bytes in {ElapsedMs} ms", relativePath, body.Length, stopwatch.ElapsedMilliseconds);
         return body;
     }
 
